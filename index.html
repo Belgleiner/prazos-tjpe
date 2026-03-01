@@ -2,77 +2,179 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Triagem IN 04/2023 - TJPE</title>
+<title>Central de Mandados - Painel Institucional</title>
+
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
-body{font-family:Arial;background:#f3f4f6;padding:20px;}
-button{padding:10px;background:#1e3a8a;color:white;border:none;border-radius:6px;margin-top:10px;}
-.card{background:white;padding:20px;margin-top:20px;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);}
-.vencido{border-left:8px solid red;}
-.proximo{border-left:8px solid orange;}
-.ok{border-left:8px solid green;}
+body{font-family:Arial;background:#f1f5f9;padding:20px;}
+h2{color:#1e3a8a;}
+button{padding:8px;margin:4px;background:#1e40af;color:white;border:none;border-radius:6px;}
+.card{background:white;padding:15px;margin-top:10px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.1);}
+.vencido{border-left:6px solid red;}
+.proximo{border-left:6px solid orange;}
+.regular{border-left:6px solid green;}
+input{width:100%;margin-top:4px;}
+textarea{width:100%;margin-top:5px;}
+.dashboard{background:white;padding:15px;margin-top:20px;border-radius:8px;}
 </style>
 </head>
+
 <body>
 
-<h2>Triagem Automática - IN 04/2023 TJPE</h2>
+<h2>Painel Institucional - Central de Mandados</h2>
 
 <input type="file" id="imagemInput" accept="image/*">
 <br>
 <button onclick="processarImagem()">Processar Print</button>
 <button onclick="exportarExcel()">Exportar Excel</button>
+<button onclick="gerarPDF()">Relatório PDF</button>
+<button onclick="gerarCertidao()">Gerar Certidão</button>
 
 <div id="resultado"></div>
+<div class="dashboard" id="dashboard"></div>
+
+<audio id="alertaSom">
+<source src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" type="audio/mpeg">
+</audio>
 
 <script>
 
-let dadosGlobais = [];
+let bancoMandados = [];
 
-function calcularPrazo(tipo, situacao){
-    if(situacao === "URGENTE") return 2;
-    if(tipo.includes("AVALIAÇÃO")) return 15;
-    if(tipo.includes("BUSCA")) return 2;
-    return 10;
+function atualizarDashboard(){
+    let total = bancoMandados.length;
+    let urg = bancoMandados.filter(m=>m.tipo==="URGENTE").length;
+    let prot = bancoMandados.filter(m=>m.tipo==="MEDIDA PROTETIVA").length;
+    let ord = bancoMandados.filter(m=>m.tipo==="ORDINÁRIO").length;
+    let venc = bancoMandados.filter(m=>m.status==="vencido").length;
+
+    document.getElementById("dashboard").innerHTML = `
+        <b>📊 Estatística Mensal</b><br>
+        Total: ${total} |
+        Ordinários: ${ord} |
+        Urgentes: ${urg} |
+        Medidas Protetivas: ${prot} |
+        Vencidos: ${venc}
+    `;
 }
 
-function statusPrazo(dataFinal){
-    const hoje = new Date();
-    const diff = Math.ceil((dataFinal - hoje)/(1000*60*60*24));
-    if(diff < 0) return "vencido";
-    if(diff <= 2) return "proximo";
-    return "ok";
+function calcularPrazo(tipo, dataDist){
+    let dias = tipo==="MEDIDA PROTETIVA"?2:tipo==="URGENTE"?5:20;
+    let p = dataDist.split("/");
+    let data = new Date(p[2],p[1]-1,p[0]);
+    data.setDate(data.getDate()+dias);
+    return data;
 }
 
-function triagemAvancada(texto){
+function classificarPrazo(dataFinal){
+    let hoje=new Date();
+    let diff=Math.ceil((dataFinal-hoje)/(1000*60*60*24));
+    if(diff<0)return "vencido";
+    if(diff<=2)return "proximo";
+    return "regular";
+}
 
-    const datas = texto.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
-    const processoMatch = texto.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/);
+function identificarTipo(txt){
+    txt=txt.toUpperCase();
+    if(txt.includes("MEDIDA PROTETIVA"))return "MEDIDA PROTETIVA";
+    if(txt.includes("URGENTE"))return "URGENTE";
+    return "ORDINÁRIO";
+}
 
-    const tipo = texto.toUpperCase().includes("CITAÇÃO") ? "CITAÇÃO" :
-                 texto.toUpperCase().includes("INTIMAÇÃO") ? "INTIMAÇÃO" :
-                 texto.toUpperCase().includes("AVALIAÇÃO") ? "AVALIAÇÃO" :
-                 texto.toUpperCase().includes("BUSCA") ? "BUSCA E APREENSÃO" :
-                 "OUTROS";
+function processarTextoOCR(texto){
 
-    const situacao = texto.toUpperCase().includes("URGENTE") ? "URGENTE" : "ORDINÁRIO";
+    const processos = texto.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [];
 
-    const recebimento = datas[0] || new Date().toLocaleDateString('pt-BR');
+    processos.forEach(proc=>{
 
-    const partesData = recebimento.split("/");
-    const dataObj = new Date(partesData[2], partesData[1]-1, partesData[0]);
+        let bloco = texto.split(proc)[1];
 
-    const diasPrazo = calcularPrazo(tipo, situacao);
-    dataObj.setDate(dataObj.getDate() + diasPrazo);
+        let datas = bloco.match(/\d{2}\/\d{2}\/\d{4}/g)||[];
+        let dataDist = datas[0]||new Date().toLocaleDateString('pt-BR');
 
-    const classeStatus = statusPrazo(dataObj);
+        let tipo = identificarTipo(bloco);
 
-    const dados = {
-        processo: processoMatch ? processoMatch[0] : "Não identificado",
-        tipo,
-        situacao,
-        recebimento,
+        if(tipo==="MEDIDA PROTETIVA"){
+            document.getElementById("alertaSom").play();
+        }
+
+        let prazoObj = calcularPrazo(tipo,dataDist);
+        let status = classificarPrazo(prazoObj);
+
+        let nomeMatch = bloco.match(/NOME[:\s]+([A-Z\s]+)/);
+        let enderecoMatch = bloco.match(/ENDERE[ÇC]O[:\s]+(.+)/);
+
+        let mandado={
+            processo:proc,
+            tipo,
+            distribuicao:dataDist,
+            prazo: prazoObj.toLocaleDateString('pt-BR'),
+            status,
+            nome:nomeMatch?nomeMatch[1]:"Não identificado",
+            endereco:enderecoMatch?enderecoMatch[1]:"Não identificado"
+        };
+
+        bancoMandados.push(mandado);
+
+        document.getElementById("resultado").innerHTML += `
+        <div class="card ${status}">
+            Processo:<input value="${mandado.processo}">
+            Nome:<input value="${mandado.nome}">
+            Endereço:<input value="${mandado.endereco}">
+            Tipo:<input value="${mandado.tipo}">
+            Distribuição:<input value="${mandado.distribuicao}">
+            Prazo Final:<input value="${mandado.prazo}">
+            Status:<input value="${mandado.status}">
+        </div>
+        `;
+    });
+
+    atualizarDashboard();
+}
+
+function processarImagem(){
+    let file=document.getElementById("imagemInput").files[0];
+    if(!file)return alert("Selecione imagem");
+
+    Tesseract.recognize(file,'por').then(({data:{text}})=>{
+        processarTextoOCR(text);
+    });
+}
+
+function exportarExcel(){
+    let ws=XLSX.utils.json_to_sheet(bancoMandados);
+    let wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Mandados");
+    XLSX.writeFile(wb,"controle_mandados.xlsx");
+}
+
+function gerarPDF(){
+    const {jsPDF}=window.jspdf;
+    let doc=new jsPDF();
+    doc.text("Relatório Mensal - Central de Mandados",10,10);
+    let y=20;
+    bancoMandados.forEach((m,i)=>{
+        doc.text(`${i+1}. ${m.processo} | ${m.tipo} | ${m.prazo}`,10,y);
+        y+=8;
+    });
+    doc.save("relatorio_mensal.pdf");
+}
+
+function gerarCertidao(){
+    let texto="CERTIDÃO\n\nCertifico que, em cumprimento ao mandado abaixo relacionado, procedi às diligências necessárias.\n\n";
+    bancoMandados.forEach(m=>{
+        texto+=`Processo: ${m.processo} - Destinatário: ${m.nome} - Endereço: ${m.endereco}\n`;
+    });
+    alert(texto);
+}
+
+</script>
+
+</body>
+</html>        recebimento,
         prazoFinal: dataObj.toLocaleDateString('pt-BR'),
         status: classeStatus
     };
