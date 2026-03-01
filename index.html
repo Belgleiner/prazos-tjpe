@@ -196,6 +196,130 @@ carregarLocal();
 </script>
 
 </body>
+</html>    if(diff<0) return "vencido";
+    if(diff<=2) return "proximo";
+    return "regular";
+}
+
+function processarTextoOCR(texto){
+
+    const processos = texto.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [];
+
+    processos.forEach(proc=>{
+
+        let bloco = texto.split(proc)[1] || texto;
+        let datas = bloco.match(/\d{2}\/\d{2}\/\d{4}/g)||[];
+        let dataDist = datas[0] || new Date().toLocaleDateString('pt-BR');
+
+        let tipo = identificarTipo(bloco);
+        let prazoObj = calcularPrazo(tipo,dataDist);
+        let status = classificarPrazo(prazoObj);
+
+        if(tipo==="MEDIDA PROTETIVA"){
+            document.getElementById("alertaSom").play();
+        }
+
+        bancoMandados.push({
+            processo:proc,
+            nome:"",
+            endereco:"",
+            tipo,
+            distribuicao:dataDist,
+            prazo:prazoObj.toLocaleDateString('pt-BR'),
+            status
+        });
+    });
+
+    salvarLocal();
+    renderizar();
+}
+
+function renderizar(){
+
+    const div = document.getElementById("resultado");
+    div.innerHTML="";
+
+    bancoMandados.forEach((m,index)=>{
+
+        div.innerHTML+=`
+        <div class="card ${m.status}">
+            Processo:<input value="${m.processo}" onchange="editar(${index},'processo',this.value)">
+            Nome:<input value="${m.nome}" onchange="editar(${index},'nome',this.value)">
+            Endereço:<input value="${m.endereco}" onchange="editar(${index},'endereco',this.value)">
+            Tipo:<input value="${m.tipo}" onchange="editar(${index},'tipo',this.value)">
+            Distribuição:<input value="${m.distribuicao}" onchange="editar(${index},'distribuicao',this.value)">
+            Prazo Final:<input value="${m.prazo}" readonly>
+            Status:<input value="${m.status}" readonly>
+            <button onclick="gerarCertidaoIndividual(${index})">Gerar Certidão</button>
+        </div>
+        `;
+    });
+
+    atualizarDashboard();
+}
+
+function editar(index,campo,valor){
+    bancoMandados[index][campo]=valor;
+    salvarLocal();
+}
+
+function atualizarDashboard(){
+    let total=bancoMandados.length;
+    let ord=bancoMandados.filter(m=>m.tipo==="ORDINÁRIO").length;
+    let urg=bancoMandados.filter(m=>m.tipo==="URGENTE").length;
+    let prot=bancoMandados.filter(m=>m.tipo==="MEDIDA PROTETIVA").length;
+    let venc=bancoMandados.filter(m=>m.status==="vencido").length;
+
+    document.getElementById("dashboard").innerHTML=`
+    <b>📊 Estatística Mensal</b><br>
+    Total: ${total} |
+    Ordinários: ${ord} |
+    Urgentes: ${urg} |
+    Medidas Protetivas: ${prot} |
+    Vencidos: ${venc}
+    `;
+}
+
+function gerarCertidaoIndividual(index){
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const m = bancoMandados[index];
+
+    doc.setFontSize(12);
+    doc.text("CERTIDÃO", 10, 20);
+    doc.text(`Processo: ${m.processo}`,10,35);
+    doc.text(`Destinatário: ${m.nome}`,10,45);
+    doc.text(`Endereço: ${m.endereco}`,10,55);
+    doc.text(`Tipo: ${m.tipo}`,10,65);
+    doc.text("Certifico que procedi às diligências necessárias, nos termos do mandado expedido.",10,80);
+    doc.text("O referido é verdade. Dou fé.",10,95);
+
+    doc.save(`certidao_${m.processo}.pdf`);
+}
+
+function exportarExcel(){
+    let ws=XLSX.utils.json_to_sheet(bancoMandados);
+    let wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Mandados");
+    XLSX.writeFile(wb,"controle_mandados_tjpe.xlsx");
+}
+
+function processarImagem(){
+    let file=document.getElementById("imagemInput").files[0];
+    if(!file){ alert("Selecione imagem."); return; }
+
+    Tesseract.recognize(file,'por')
+    .then(({data:{text}})=>{
+        processarTextoOCR(text);
+    });
+}
+
+carregarLocal();
+
+</script>
+
+</body>
 </html>    if(diff<0)return "vencido";
     if(diff<=2)return "proximo";
     return "regular";
