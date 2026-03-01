@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Triagem IN 04/2023 - TJPE</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body{font-family:Arial;background:#f3f4f6;padding:20px;}
+button{padding:10px;background:#1e3a8a;color:white;border:none;border-radius:6px;margin-top:10px;}
+.card{background:white;padding:20px;margin-top:20px;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+.vencido{border-left:8px solid red;}
+.proximo{border-left:8px solid orange;}
+.ok{border-left:8px solid green;}
+</style>
+</head>
+<body>
+
+<h2>Triagem Automática - IN 04/2023 TJPE</h2>
+
+<input type="file" id="imagemInput" accept="image/*">
+<br>
+<button onclick="processarImagem()">Processar Print</button>
+<button onclick="exportarExcel()">Exportar Excel</button>
+
+<div id="resultado"></div>
+
+<script>
+
+let dadosGlobais = [];
+
+function calcularPrazo(tipo, situacao){
+    if(situacao === "URGENTE") return 2;
+    if(tipo.includes("AVALIAÇÃO")) return 15;
+    if(tipo.includes("BUSCA")) return 2;
+    return 10;
+}
+
+function statusPrazo(dataFinal){
+    const hoje = new Date();
+    const diff = Math.ceil((dataFinal - hoje)/(1000*60*60*24));
+    if(diff < 0) return "vencido";
+    if(diff <= 2) return "proximo";
+    return "ok";
+}
+
+function triagemAvancada(texto){
+
+    const datas = texto.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+    const processoMatch = texto.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/);
+
+    const tipo = texto.toUpperCase().includes("CITAÇÃO") ? "CITAÇÃO" :
+                 texto.toUpperCase().includes("INTIMAÇÃO") ? "INTIMAÇÃO" :
+                 texto.toUpperCase().includes("AVALIAÇÃO") ? "AVALIAÇÃO" :
+                 texto.toUpperCase().includes("BUSCA") ? "BUSCA E APREENSÃO" :
+                 "OUTROS";
+
+    const situacao = texto.toUpperCase().includes("URGENTE") ? "URGENTE" : "ORDINÁRIO";
+
+    const recebimento = datas[0] || new Date().toLocaleDateString('pt-BR');
+
+    const partesData = recebimento.split("/");
+    const dataObj = new Date(partesData[2], partesData[1]-1, partesData[0]);
+
+    const diasPrazo = calcularPrazo(tipo, situacao);
+    dataObj.setDate(dataObj.getDate() + diasPrazo);
+
+    const classeStatus = statusPrazo(dataObj);
+
+    const dados = {
+        processo: processoMatch ? processoMatch[0] : "Não identificado",
+        tipo,
+        situacao,
+        recebimento,
+        prazoFinal: dataObj.toLocaleDateString('pt-BR'),
+        status: classeStatus
+    };
+
+    dadosGlobais.push(dados);
+
+    return `
+    <div class="card ${classeStatus}">
+        <b>Processo:</b> ${dados.processo}<br>
+        <b>Tipo:</b> ${tipo}<br>
+        <b>Recebimento:</b> ${recebimento}<br>
+        <b>Prazo Final:</b> ${dados.prazoFinal}<br>
+        <b>Status:</b> ${classeStatus.toUpperCase()}
+    </div>
+    `;
+}
+
+function processarImagem(){
+    const file = document.getElementById("imagemInput").files[0];
+    if(!file){ alert("Selecione imagem"); return; }
+
+    document.getElementById("resultado").innerHTML = "Processando...";
+
+    Tesseract.recognize(file,'por').then(({data:{text}})=>{
+        document.getElementById("resultado").innerHTML = triagemAvancada(text);
+    });
+}
+
+function exportarExcel(){
+    const ws = XLSX.utils.json_to_sheet(dadosGlobais);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Mandados");
+    XLSX.writeFile(wb, "triagem_mandados_IN042023.xlsx");
+}
+
+</script>
+
+</body>
+</html>
