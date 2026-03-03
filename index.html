@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Controle Simplificado - Oficial de Justiça</title>
+<title>Central Mobile - Oficial de Justiça TJPE</title>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
 body{
@@ -25,11 +27,16 @@ box-shadow:0 2px 5px rgba(0,0,0,0.1);
 margin-bottom:15px;
 }
 
-input, select, button{
+label{
+font-size:14px;
+font-weight:bold;
+}
+
+input, textarea, select, button{
 width:100%;
 padding:10px;
 margin:5px 0;
-font-size:16px;
+font-size:15px;
 }
 
 button{
@@ -41,27 +48,53 @@ border-radius:6px;
 
 .sigilo{
 background:#ffe6f0;
-border-left:5px solid #c0392b;
+border-left:6px solid #c0392b;
 }
 
 .alerta{
 color:red;
 font-weight:bold;
 }
-
 </style>
 </head>
 
 <body>
 
-<h2>Mandados - IN 04/2023</h2>
+<h2>Central Mobile - Mandados</h2>
 
 <div class="card">
-<input type="text" id="processo" placeholder="Processo">
-<input type="text" id="parte" placeholder="Parte">
+<b>📌 Como preencher:</b><br>
+• Cole abaixo o texto copiado do PJe OU<br>
+• Faça upload de um print do mandado.<br>
+O sistema tentará identificar automaticamente processo, parte e datas.
+</div>
+
+<div class="card">
+<label>Colar texto do PJe</label>
+<textarea id="textoPJE" rows="4" placeholder="Cole aqui o conteúdo copiado do PJe..."></textarea>
+<button onclick="extrairTexto()">Extrair Dados</button>
+</div>
+
+<div class="card">
+<label>Importar print (OCR)</label>
+<input type="file" accept="image/*" onchange="lerImagem(event)">
+<div id="statusOCR"></div>
+</div>
+
+<div class="card">
+<label>Número do Processo</label>
+<input type="text" id="processo">
+
+<label>Nome da Parte</label>
+<input type="text" id="parte">
+
+<label>Data de Recebimento</label>
 <input type="date" id="recebimento">
+
+<label>Data da Audiência</label>
 <input type="date" id="audiencia">
 
+<label>Status</label>
 <select id="status">
 <option>Pendente</option>
 <option>Cumprido</option>
@@ -69,21 +102,23 @@ font-weight:bold;
 <option>Positivo</option>
 </select>
 
+<label>Sigilo</label>
 <select id="sigilo">
 <option value="Nao">Sem Sigilo</option>
 <option value="Sim">Violência Doméstica (Sigiloso)</option>
 </select>
 
-<button onclick="add()">Adicionar</button>
+<button onclick="add()">Salvar Mandado</button>
 </div>
 
 <div id="lista"></div>
 
 <script>
 
-let dados = JSON.parse(localStorage.getItem("mobileMandados")) || [];
+let dados = JSON.parse(localStorage.getItem("mandadosMobile")) || [];
 
 function prazo(data){
+if(!data) return "-";
 let d = new Date(data);
 d.setDate(d.getDate()+20);
 let hoje = new Date();
@@ -91,7 +126,35 @@ return Math.ceil((d-hoje)/(1000*60*60*24));
 }
 
 function salvar(){
-localStorage.setItem("mobileMandados", JSON.stringify(dados));
+localStorage.setItem("mandadosMobile", JSON.stringify(dados));
+}
+
+function extrairTexto(){
+let texto = document.getElementById("textoPJE").value;
+
+let proc = texto.match(/\d{7}-\d{2}\.\d{4}\.\d{1}\.\d{2}\.\d{4}/);
+if(proc) processo.value = proc[0];
+
+let data = texto.match(/\d{2}\/\d{2}\/\d{4}/);
+if(data) recebimento.value = converterData(data[0]);
+
+let nomeMatch = texto.match(/Requerente:(.*)/i) || texto.match(/Parte:(.*)/i);
+if(nomeMatch) parte.value = nomeMatch[1].trim();
+}
+
+function converterData(dataBR){
+let partes = dataBR.split("/");
+return partes[2]+"-"+partes[1]+"-"+partes[0];
+}
+
+function lerImagem(event){
+let file = event.target.files[0];
+document.getElementById("statusOCR").innerText="Lendo imagem...";
+
+Tesseract.recognize(file,'por').then(({ data: { text } })=>{
+document.getElementById("textoPJE").value = text;
+document.getElementById("statusOCR").innerText="Texto extraído. Clique em 'Extrair Dados'.";
+});
 }
 
 function add(){
