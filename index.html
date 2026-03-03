@@ -1,113 +1,140 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <title>Painel OFJ - Integrado PJe</title>
-    <style>
-        :root { --pje-blue: #0078aa; --card-bg: #ffffff; }
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f4f7f9; padding: 20px; }
-        .container { max-width: 1100px; margin: auto; }
-        .header-app { background: var(--pje-blue); color: white; padding: 15px; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center; }
-        .upload-area { background: white; padding: 20px; border: 2px dashed #ccc; text-align: center; border-radius: 0 0 8px 8px; margin-bottom: 20px; }
-        .card-mandado { background: white; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 6px solid var(--pje-blue); }
-        .grid-campos { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; }
-        label { font-size: 11px; font-weight: bold; color: #666; text-transform: uppercase; }
-        input, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-top: 4px; font-size: 13px; }
-        .btn-maps { background: #4285F4; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle Simplificado - Oficial de Justiça</title>
+
+<style>
+body{
+font-family: Arial, sans-serif;
+background:#f2f4f7;
+margin:0;
+padding:15px;
+}
+
+h2{
+text-align:center;
+}
+
+.card{
+background:white;
+padding:15px;
+border-radius:10px;
+box-shadow:0 2px 5px rgba(0,0,0,0.1);
+margin-bottom:15px;
+}
+
+input, select, button{
+width:100%;
+padding:10px;
+margin:5px 0;
+font-size:16px;
+}
+
+button{
+background:#2c3e50;
+color:white;
+border:none;
+border-radius:6px;
+}
+
+.sigilo{
+background:#ffe6f0;
+border-left:5px solid #c0392b;
+}
+
+.alerta{
+color:red;
+font-weight:bold;
+}
+
+</style>
 </head>
+
 <body>
 
-<div class="container">
-    <div class="header-app">
-        <span>🏛️ TRIAGEM OFICIAL DE JUSTIÇA - PJe TJPE</span>
-        <small id="contador">0 Mandados</small>
-    </div>
-    
-    <div class="upload-area">
-        <input type="file" id="arquivoPje" accept=".html,.htm" onchange="processarArquivo()">
-        <p>Arraste o arquivo .html do seu Painel do Oficial para cá</p>
-    </div>
+<h2>Mandados - IN 04/2023</h2>
 
-    <div id="listaMandados"></div>
+<div class="card">
+<input type="text" id="processo" placeholder="Processo">
+<input type="text" id="parte" placeholder="Parte">
+<input type="date" id="recebimento">
+<input type="date" id="audiencia">
+
+<select id="status">
+<option>Pendente</option>
+<option>Cumprido</option>
+<option>Negativo</option>
+<option>Positivo</option>
+</select>
+
+<select id="sigilo">
+<option value="Nao">Sem Sigilo</option>
+<option value="Sim">Violência Doméstica (Sigiloso)</option>
+</select>
+
+<button onclick="add()">Adicionar</button>
 </div>
 
+<div id="lista"></div>
+
 <script>
-    function processarArquivo() {
-        const file = document.getElementById('arquivoPje').files[0];
-        if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(e.target.result, "text/html");
-            
-            // Localiza a tabela de processos do PJe
-            const linhasTabela = doc.querySelectorAll("tr[id^='j_id153:listagem:']");
-            const mandados = [];
+let dados = JSON.parse(localStorage.getItem("mobileMandados")) || [];
 
-            linhasTabela.forEach(linha => {
-                const colunas = linha.querySelectorAll("td");
-                
-                if (colunas.length >= 5) {
-                    // 1. Processo (Coluna 2 - Atos de Comunicação contém o número)
-                    const textoAtos = colunas[1].innerText;
-                    const numProcesso = textoAtos.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/)?.[0] || "N/D";
-                    
-                    // 2. Destinatário (Geralmente na 4ª linha de texto dentro da coluna 2)
-                    const linhasTexto = textoAtos.split('\n').map(t => t.trim()).filter(t => t !== "");
-                    const destinatario = linhasTexto[3] || linhasTexto[0]; // Tenta a 4ª linha conforme regra
+function prazo(data){
+let d = new Date(data);
+d.setDate(d.getDate()+20);
+let hoje = new Date();
+return Math.ceil((d-hoje)/(1000*60*60*24));
+}
 
-                    // 3. Próxima Audiência (Coluna 3)
-                    const audiencia = colunas[2].innerText.trim();
+function salvar(){
+localStorage.setItem("mobileMandados", JSON.stringify(dados));
+}
 
-                    // 4. Endereço (Coluna 4)
-                    const endereco = colunas[3].innerText.trim();
+function add(){
+let m = {
+processo: processo.value,
+parte: parte.value,
+recebimento: recebimento.value,
+audiencia: audiencia.value,
+status: status.value,
+sigilo: sigilo.value
+};
 
-                    mandados.push({ numProcesso, destinatario, audiencia, endereco });
-                }
-            });
+dados.push(m);
+salvar();
+render();
+}
 
-            renderizar(mandados);
-        };
-        reader.readAsText(file);
-    }
+function render(){
+lista.innerHTML="";
+dados.forEach(m=>{
+let dias = prazo(m.recebimento);
+let div = document.createElement("div");
+div.className="card";
 
-    function renderizar(lista) {
-        const container = document.getElementById('listaMandados');
-        const contDisp = document.getElementById('contador');
-        container.innerHTML = "";
-        contDisp.innerText = `${lista.length} Mandados Identificados`;
+if(m.sigilo=="Sim"){
+div.classList.add("sigilo");
+}
 
-        lista.forEach(m => {
-            const card = document.createElement('div');
-            card.className = 'card-mandado';
-            card.innerHTML = `
-                <div class="grid-campos">
-                    <div>
-                        <label>Processo</label>
-                        <input type="text" value="${m.numProcesso}" readonly>
-                    </div>
-                    <div>
-                        <label>Destinatário</label>
-                        <input type="text" value="${m.destinatario}">
-                    </div>
-                    <div>
-                        <label>Próxima Audiência</label>
-                        <input type="text" value="${m.audiencia || 'Não agendada'}">
-                    </div>
-                </div>
-                <div style="margin-top:10px">
-                    <label>📍 Endereço de Diligência</label>
-                    <input type="text" value="${m.endereco}">
-                </div>
-                <button class="btn-maps" onclick="window.open('https://www.google.com.br/maps/search/${encodeURIComponent(m.endereco)}')">
-                    ABRIR NO GOOGLE MAPS
-                </button>
-            `;
-            container.appendChild(card);
-        });
-    }
+div.innerHTML=`
+<b>${m.processo}</b><br>
+Parte: ${m.parte}<br>
+Prazo: ${dias} dias ${dias<0?"<span class='alerta'>(VENCIDO)</span>":""}<br>
+Audiência: ${m.audiencia || "-"}<br>
+Status: ${m.status}<br>
+Sigilo: ${m.sigilo}
+`;
+
+lista.appendChild(div);
+});
+}
+
+render();
+
 </script>
 
 </body>
