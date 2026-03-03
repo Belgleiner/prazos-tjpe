@@ -138,4 +138,100 @@ if(proc) processo.value = proc[0];
 
 /* Destinatário */
 let dest = texto.match(/Destinat[aá]rio[:\s]*(.*)/i);
-if(dest) destinatario.value = dest[1].split("\n
+if(dest) destinatario.value = dest[1].split("\n")[0].trim();
+
+/* Endereço */
+let end = texto.match(/Endere[cç]o[:\s]*(.*)/i);
+if(end) endereco.value = end[1].split("\n")[0].trim();
+
+/* Vara */
+let varaMatch = texto.match(/Vara[:\s]*(.*)/i);
+if(varaMatch) vara.value = varaMatch[1].split("\n")[0].trim();
+
+/* Data Distribuição */
+let dist = texto.match(/Distribui[cç][aã]o[:\s]*(\d{2}\/\d{2}\/\d{4})/i);
+if(dist) distribuicao.value = converterData(dist[1]);
+
+/* Audiência */
+let aud = texto.match(/Audi[eê]ncia[:\s]*(\d{2}\/\d{2}\/\d{4})/i);
+if(aud) audiencia.value = converterData(aud[1]);
+
+}
+
+function lerImagem(event){
+let file = event.target.files[0];
+statusOCR.innerText="Lendo imagem...";
+
+Tesseract.recognize(file,'por').then(({ data: { text } })=>{
+textoPJE.value = text;
+statusOCR.innerText="Texto extraído. Clique em Extrair Dados.";
+});
+}
+
+function prazo(data){
+if(!data) return "-";
+let d = new Date(data);
+d.setDate(d.getDate()+20);
+let hoje = new Date();
+return Math.ceil((d-hoje)/(1000*60*60*24));
+}
+
+function salvar(){
+localStorage.setItem("mandadosTJPE", JSON.stringify(dados));
+}
+
+function add(){
+
+let m = {
+processo: processo.value,
+destinatario: destinatario.value,
+endereco: endereco.value,
+distribuicao: distribuicao.value,
+audiencia: audiencia.value,
+vara: vara.value,
+status: status.value,
+sigilo: sigilo.value
+};
+
+dados.push(m);
+salvar();
+render();
+}
+
+function render(){
+
+lista.innerHTML="";
+
+dados.forEach(m=>{
+
+let dias = prazo(m.distribuicao);
+let div = document.createElement("div");
+div.className="card";
+
+if(m.sigilo=="Sim"){
+div.classList.add("sigilo");
+}
+
+div.innerHTML=`
+<b>${m.processo}</b><br>
+Destinatário: ${m.destinatario}<br>
+Endereço: ${m.endereco}<br>
+Vara: ${m.vara}<br>
+Distribuição: ${m.distribuicao || "-"}<br>
+Prazo: ${dias} dias ${dias<0?"<span class='alerta'>(VENCIDO)</span>":""}<br>
+Audiência: ${m.audiencia || "-"}<br>
+Status: ${m.status}
+`;
+
+lista.appendChild(div);
+
+});
+
+}
+
+render();
+
+</script>
+
+</body>
+</html>
